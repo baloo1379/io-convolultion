@@ -9,8 +9,9 @@ class PyPBM:
     NUMBER = 2
     COMMENT = 60
 
-    def __init__(self, file_path):
-        with open(file_path, encoding='UTF-8') as f:
+    def __init__(self, path):
+        self.file_name = path
+        with open(path, encoding='UTF-8') as f:
             tokens = t.generate_tokens(f.read)
 
             # Format
@@ -103,6 +104,8 @@ class PyPBM:
         green = (rgb >> 8) & 0xFF
         blue = rgb & 0xFF
         return PyPBM.scale_number(red, prev_max), PyPBM.scale_number(green, prev_max), PyPBM.scale_number(blue, prev_max)
+
+    # TODO dodać zapis do pliku
 
 
 if __name__ == "__main__":
