@@ -2,52 +2,65 @@ import asyncio
 import fire
 import random
 import copy
+import time
 from pypbm import PyPBM, np
 
-filt = np.array([[1, 2, 1],[2, 4, 2],[1, 2 ,1]])
 
-'''
-How the pixel should look between threads
-- It should be a tuple
-- [0] - id of image
-- [1] - (x, y)
-- [2] - array of pixel and element around it
-'''
+class Filters:
+    CHESS_FILTER = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
+    ONES = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    BLUR = np.array([[0.0625, 0.125, 0.0625], [0.125, 0.25, 0.125], [0.0625, 0.125, 0.0625]])
+    SHARPEN = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    OUTLINE = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+    EMBOSS = np.array([[-2, -1, 0], [-1, 1, 1], [0, 1, 2]])
 
 
 class CLI:
 
-    def __init__(self):
+    def __init__(self, i: str, o: str, k: str):
         print(f"Welcome in app.")
-        asyncio.run(Convolution.run())
+        f = Filters.ONES
+        if k.lower() == "blur":
+            f = Filters.BLUR
+        elif k.lower() == "sharpen":
+            f = Filters.SHARPEN
+        elif k.lower() == "outline":
+            f = Filters.OUTLINE
+        elif k.lower() == "emboss":
+            f = Filters.EMBOSS
+        elif k.lower() == "chess":
+            f = Filters.CHESS_FILTER
+        asyncio.run(Convolution.run(i, o, f))
 
 
 class Convolution:
 
     @staticmethod
-    async def produce_image(n, q):
+    async def produce_image(file, n, q):
         await asyncio.sleep(random.randint(1, 7) / 10)
-        image = PyPBM('circle.ascii.pbm', n)
+        image = PyPBM(file, n)
         target = copy.deepcopy(image)
         target.file_name = target.file_name.split()
         print("Image ready: ", image.info())
-        await q.put((image, target))
+        await q.put(image)
         return target
 
     @staticmethod
-    async def divide_pixels(images_q, corners_j, sides_j, rows_j) -> None:
+    async def divide_pixels(images_q, corners_j, sides_j, rows_j, time_list) -> None:
         while True:
-            image, target = await images_q.get()
+            image = await images_q.get()
             print("Dividing image", image.id)
 
             for c in range(4):
-                await corners_j.put((image.pixels, c, target))
+                await corners_j.put((image, c))
 
             for s in range(4):
-                await sides_j.put((image.pixels, s, target))
+                await sides_j.put((image, s))
 
             for r in range(1, image.height - 1):
-                await rows_j.put((image.pixels, r, target))
+                await rows_j.put((image, r))
+
+            time_list.append(time.perf_counter())
 
             print("All jobs scheduled")
 
@@ -56,105 +69,105 @@ class Convolution:
     @staticmethod
     async def produce_corners(corners_j, corners_o):
         while True:
-            pixels, side, target = await corners_j.get()
+            image, side = await corners_j.get()
             # await asyncio.sleep(random.randint(1, 17) / 10)
             corner = np.zeros((3, 3), int)
             position = (0, 0)
             if side == 0:  # left upper
-                pixel_array = pixels[0:2]
+                pixel_array = image.pixels[0:2]
                 corner[1][1] = pixel_array[0][0]
                 corner[1][2] = pixel_array[0][1]
                 corner[2][1] = pixel_array[1][0]
                 corner[2][2] = pixel_array[1][1]
             elif side == 1:  # right upper
-                pixel_array = pixels[0:2]
+                pixel_array = image.pixels[0:2]
                 corner[1][0] = pixel_array[0][-2]
                 corner[1][1] = pixel_array[0][-1]
                 corner[2][0] = pixel_array[1][-2]
                 corner[2][1] = pixel_array[1][-1]
-                position = (0, target.width - 1)
+                position = (0, image.width - 1)
             elif side == 2:  # right bottom
-                pixel_array = target.pixels[-2:]
+                pixel_array = image.pixels[-2:]
                 corner[0][0] = pixel_array[0][-2]
                 corner[0][1] = pixel_array[0][-1]
                 corner[1][0] = pixel_array[1][-2]
                 corner[1][1] = pixel_array[1][-1]
-                position = (target.height - 1, 0)
+                position = (image.height - 1, 0)
             elif side == 3:  # left bottom
-                pixel_array = target.pixels[-2:]
+                pixel_array = image.pixels[-2:]
                 corner[0][1] = pixel_array[0][0]
                 corner[0][2] = pixel_array[0][1]
                 corner[1][1] = pixel_array[1][0]
                 corner[1][2] = pixel_array[1][1]
-                position = (target.height - 1, target.width - 1)
+                position = (image.height - 1, image.width - 1)
             else:
                 raise ValueError(f"wrong side", side)
-            print(f"Extruded corner {side} from image {target.id}")
-            await corners_o.put((target, position, corner))
+            # print(f"Extruded corner {side} from image {image.id}")
+            await corners_o.put((image, position, corner))
             corners_j.task_done()
 
     @staticmethod
     async def produce_sides(sides_j, sides_o):
         while True:
-            pixels, side, target = await sides_j.get()
+            image, side = await sides_j.get()
             # await asyncio.sleep(random.randint(1, 17) / 10)
             if side == 0:  # top
-                row = np.zeros((3, target.width), int)
+                row = np.zeros((3, image.width), int)
                 for i in range(2):
-                    row[i + 1] = pixels[i]
+                    row[i + 1] = image.pixels[i]
             elif side == 1:  # right
-                row = np.zeros((target.height, 3), int)
-                for h in range(target.height):
-                    row[h][0] = pixels[h][-2]
-                    row[h][1] = pixels[h][-1]
+                row = np.zeros((image.height, 3), int)
+                for h in range(image.height):
+                    row[h][0] = image.pixels[h][-2]
+                    row[h][1] = image.pixels[h][-1]
                 row = row.T  # transposition array from vertical to horizontal
             elif side == 2:  # bottom
-                row = np.zeros((3, target.width), int)
+                row = np.zeros((3, image.width), int)
                 for i in range(2):
-                    row[i] = pixels[-2 + i]
+                    row[i] = image.pixels[-2 + i]
             elif side == 3:  # left
-                row = np.zeros((target.height, 3), int)
-                for h in range(target.height):
-                    row[h][1] = pixels[h][-1]
-                    row[h][2] = pixels[h][-2]
+                row = np.zeros((image.height, 3), int)
+                for h in range(image.height):
+                    row[h][1] = image.pixels[h][-1]
+                    row[h][2] = image.pixels[h][-2]
                 row = row.T
             else:
                 raise ValueError(f"wrong side", side)
 
-            print(f"Extruded side {side} from image {target.id}")
-            await sides_o.put((target, side, row))
+            # print(f"Extruded side {side} from image {target.id}")
+            await sides_o.put((image, side, row))
             sides_j.task_done()
 
     @staticmethod
     async def produce_rows(rows_j, rows_o):
         while True:
-            pixels, r, target = await rows_j.get()
+            image, r = await rows_j.get()
             # await asyncio.sleep(random.randint(1, 17) / 10)
-            row = np.zeros((3, target.width), int)
-            row[0] = pixels[r - 1]
-            row[1] = pixels[r]
-            row[2] = pixels[r + 1]
-            print(f"Extruded row {r} from image {target.id}")
-            await rows_o.put((target, r, row))
+            row = np.zeros((3, image.width), int)
+            row[0] = image.pixels[r - 1]
+            row[1] = image.pixels[r]
+            row[2] = image.pixels[r + 1]
+            # print(f"Extruded row {r} from image {target.id}")
+            await rows_o.put((image, r, row))
             rows_j.task_done()
 
     @staticmethod
-    async def calculate_corner(corner_o, pixels_j):
+    async def calculate_corner(corner_o, pixels_j, f):
         while True:
             target, coord, array = await corner_o.get()
-            print("Calculating for image", target.id, "on corner", coord)
-            value = await Convolution.calc(array)
+            # print("Calculating for image", target.id, "on corner", coord)
+            value = await Convolution.calc(array, f)
             await pixels_j.put((target, coord, value))
             corner_o.task_done()
 
     @staticmethod
-    async def calculate_side(pixels_i, pixels_o):
+    async def calculate_side(pixels_i, pixels_o, f):
         while True:
             target, side, array = await pixels_i.get()
-            print("Calculating for image", target.id, "on side", side)
+            # print("Calculating for image", target.id, "on side", side)
             if len(array[0]) > 3:
                 for i in range(len(array[0]) - 2):
-                    value = await Convolution.calc(await Convolution.get_cell(array, 0, i))
+                    value = await Convolution.calc(await Convolution.get_cell(array, 0, i), f)
                     x = 0
                     y = 0
                     if side == 0:
@@ -174,23 +187,27 @@ class Convolution:
             pixels_i.task_done()
 
     @staticmethod
-    async def calculate_row(pixels_i, pixels_o, worker_id):
+    async def calculate_row(pixels_i, pixels_o, worker_id, f):
         while True:
+            # await asyncio.sleep(0.1)
             target, row, array = await pixels_i.get()
-            await asyncio.sleep(0.01)
-            print("Calculating for image", target.id, "on row", row, "by", worker_id)
+            # print("Calculating for image", target.id, "on row", row, "by", worker_id)
             for i in range(len(array[0]) - 2):
-                value = await Convolution.calc(await Convolution.get_cell(array, 0, i))
+                value = await Convolution.calc(await Convolution.get_cell(array, 0, i), f)
                 # print("r", (idx, (row, i + 1), value))
                 await pixels_o.put((target, (row, i + 1), value))
             pixels_i.task_done()
 
     @staticmethod
-    async def calc(cell):
+    async def calc(cell, f):
         cell_sum = 0
+        filter_sum = np.sum(f)
         for h in range(len(cell)):
             for w in range(len(cell[0])):
-                cell_sum += (cell[h][w] * filt[h][w])
+                s = cell[h][w] * f[h][w] / filter_sum
+                if s < 0:
+                    s = 0
+                cell_sum += int(s)
         return cell_sum
 
     @staticmethod
@@ -213,9 +230,11 @@ class Convolution:
             pixels_o.task_done()
 
     @staticmethod
-    async def run():
+    async def run(file: str, o: str, f: np.ndarray):
         lock = asyncio.Lock()
 
+        start = time.perf_counter()
+        time_list = [start]
         images_q = asyncio.Queue()
         # jobs
         corners_j = asyncio.Queue()
@@ -226,22 +245,22 @@ class Convolution:
         rows_o = asyncio.Queue()
         pixels_j = asyncio.Queue()
 
-        load = asyncio.create_task(Convolution.produce_image(0, images_q))
-        divide_task = asyncio.create_task(Convolution.divide_pixels(images_q, corners_j, sides_j, rows_j))
+        load = asyncio.create_task(Convolution.produce_image(file, 0, images_q))
+        divide_task = asyncio.create_task(Convolution.divide_pixels(images_q, corners_j, sides_j, rows_j, time_list))
 
         corners_task = asyncio.create_task(Convolution.produce_corners(corners_j, corners_o))
         sides_task = asyncio.create_task(Convolution.produce_sides(sides_j, sides_o))
-        rows_task = [asyncio.create_task(Convolution.produce_rows(rows_j, rows_o)) for i in range(8)]
+        rows_task = [asyncio.create_task(Convolution.produce_rows(rows_j, rows_o)) for i in range(2)]
 
-        calculation_c = asyncio.create_task(Convolution.calculate_corner(corners_o, pixels_j))
-        calculation_s = asyncio.create_task(Convolution.calculate_side(sides_o, pixels_j))
-        calculation_r = [asyncio.create_task(Convolution.calculate_row(rows_o, pixels_j, i)) for i in range(8)]
+        calculation_c = asyncio.create_task(Convolution.calculate_corner(corners_o, pixels_j, f))
+        calculation_s = asyncio.create_task(Convolution.calculate_side(sides_o, pixels_j, f))
+        calculation_r = [asyncio.create_task(Convolution.calculate_row(rows_o, pixels_j, i, f)) for i in range(2)]
 
         final_image = await load
 
         print_t = asyncio.create_task(Convolution.merge_pixels(pixels_j, final_image, lock))
 
-        # await asyncio.gather(*load)
+        # await asyncio.gather(*calculation_r)
 
         await images_q.join()
         await corners_j.join()
@@ -252,9 +271,13 @@ class Convolution:
         await rows_o.join()
         await pixels_j.join()
 
-        print(final_image)
-        final_image.save("c_f.pbm")
+        end_image = time_list[1] - time_list[0]
+        end_calc = time.perf_counter() - time_list[1]
+        print(f"image {final_image.id} loaded in {end_image:0.2f} seconds.")
+        print(f"result {final_image.id} took {end_calc:0.2f} seconds.")
+
+        final_image.save(o)
 
 
 if __name__ == "__main__":
-    asyncio.run(Convolution.run())
+    fire.Fire(CLI)
