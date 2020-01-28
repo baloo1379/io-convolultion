@@ -90,6 +90,19 @@ class PyPBM:
     def info(self):
         return f"Image: {self.file_name} id:{self.id}"
 
+    def save(self, new_file):
+        with open(new_file, 'w') as f:
+            f.write(self.type+"\n")
+            f.write(str(self.width)+" ")
+            f.write(str(self.height)+"\n")
+            if self.type != 'P1':
+                f.write(str(self.max_value)+"\n")
+            for h in range(self.height):
+                row = ""
+                for w in range(self.width):
+                    row += str(self.pixels[h][w]) + " "
+                f.write(row+"\n")
+
     @staticmethod
     def get_next_token(gen):
         token = next(gen)
@@ -116,10 +129,9 @@ class PyPBM:
         blue = rgb & 0xFF
         return PyPBM.scale_number(red, prev_max), PyPBM.scale_number(green, prev_max), PyPBM.scale_number(blue, prev_max)
 
-    # TODO dodać zapis do pliku
-
 
 if __name__ == "__main__":
     p = PyPBM('p1.txt', 0)
     print(p)
+    p.save("p1_save.txt")
 
