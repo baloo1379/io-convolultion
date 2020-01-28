@@ -40,7 +40,6 @@ class Convolution:
         await asyncio.sleep(random.randint(1, 7) / 10)
         image = PyPBM(file, n)
         target = copy.deepcopy(image)
-        target.file_name = target.file_name.split()
         print("Image ready: ", image.info())
         await q.put(image)
         return target
