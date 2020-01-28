@@ -9,8 +9,14 @@ class PyPBM:
     NUMBER = 2
     COMMENT = 60
 
-    def __init__(self, path):
+    def __init__(self, path, n):
         self.file_name = path
+        self.id = n
+        self.type = None
+        self.width = 0
+        self.height = 0
+        self.max_value = 0
+        self.pixels = np.zeros((self.height, self.width), int)
         with open(path, encoding='UTF-8') as f:
             tokens = t.generate_tokens(f.read)
 
@@ -55,7 +61,8 @@ class PyPBM:
                         token = self.get_next_token(tokens)
                         if token.type != self.NUMBER:
                             raise ValueError("wrong pixel format at ", token.start)
-                        row[j] = int(token.string)
+                        a = int(token.string)
+                        row[j] = a
                     else:
                         token = self.get_next_token(tokens)
                         if token.type != self.NUMBER:
@@ -74,10 +81,14 @@ class PyPBM:
         f.close()
 
     def __repr__(self):
-        res = f"Format: {self.type}\nSize: {self.width} x {self.height}\n"
+        res = f"Image: {self.file_name} id:{self.id}"
+        res += f"Format: {self.type}\nSize: {self.width} x {self.height}\n"
         res += f"Max value: {self.max_value}\n" if self.type == 'P2' or self.type == 'P3' else ""
         res += f"{self.pixels}"
         return res
+
+    def info(self):
+        return f"Image: {self.file_name} id:{self.id}"
 
     @staticmethod
     def get_next_token(gen):
@@ -109,6 +120,6 @@ class PyPBM:
 
 
 if __name__ == "__main__":
-    p = PyPBM('p3_multiline_bw.ppm')
+    p = PyPBM('p1.txt', 0)
     print(p)
 
