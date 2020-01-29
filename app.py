@@ -271,6 +271,7 @@ class Convolution:
 
         end_image = time_list[1] - time_list[0]
         end_calc = time.perf_counter() - time_list[1]
+        final_image.cut_edges()
         print(f"image {final_image.id} loaded in {end_image:0.2f} seconds.")
         print(f"result {final_image.id} took {end_calc:0.2f} seconds.")
 

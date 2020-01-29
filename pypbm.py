@@ -103,6 +103,15 @@ class PyPBM:
                     row += str(self.pixels[h][w]) + " "
                 f.write(row+"\n")
 
+    def update_max_value(self):
+        self.max_value = np.amax(self.pixels)
+
+    def cut_edges(self):
+        self.pixels = self.pixels[1:-1][1:-1]
+        self.width -= 1
+        self.height -= 1
+        self.update_max_value()
+
     @staticmethod
     def get_next_token(gen):
         token = next(gen)
@@ -131,7 +140,8 @@ class PyPBM:
 
 
 if __name__ == "__main__":
-    p = PyPBM('p1.txt', 0)
-    print(p)
-    p.save("p1_save.txt")
+    p = PyPBM('balloons.ascii.pgm', 0)
+    # print(p)
+    print(np.amax(p.pixels))
+    # p.save("p1_save.txt")
 
