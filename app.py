@@ -13,6 +13,7 @@ class Filters:
     SHARPEN = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
     OUTLINE = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
     EMBOSS = np.array([[-2, -1, 0], [-1, 1, 1], [0, 1, 2]])
+    DARKER = np.array([[0, 0, 0], [0, 0.5, 0], [0, 0, 0]])
 
 
 class CLI:
@@ -40,6 +41,7 @@ class Convolution:
         await asyncio.sleep(random.randint(1, 7) / 10)
         image = PyPBM(file, n)
         target = copy.deepcopy(image)
+        target.max_value = 1
         print("Image ready: ", image.info())
         await q.put(image)
         return target
@@ -174,9 +176,9 @@ class Convolution:
                         y = i + 1
                     elif side == 1:
                         x = i + 1
-                        y = target.width-1
+                        y = target.width - 1
                     elif side == 2:
-                        x = target.height-1
+                        x = target.height - 1
                         y = i + 1
                     elif side == 3:
                         x = i + 1
@@ -198,15 +200,12 @@ class Convolution:
             pixels_i.task_done()
 
     @staticmethod
-    async def calc(cell, f):
+    async def calc(cell, kernel):
         cell_sum = 0
-        filter_sum = np.sum(f)
+        filter_sum = np.sum(kernel)
         for h in range(len(cell)):
             for w in range(len(cell[0])):
-                s = cell[h][w] * f[h][w] / filter_sum
-                if s < 0:
-                    s = 0
-                cell_sum += int(s)
+                cell_sum += int(cell[h][w] * kernel[h][w])
         return cell_sum
 
     @staticmethod
@@ -279,4 +278,9 @@ class Convolution:
 
 
 if __name__ == "__main__":
-    fire.Fire(CLI)
+    pass
+    # a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    # b = np.array([[0, 0, 0], [0, 0.5, 0], [0, 0, 0]])
+    # print(Convolution.calc(a, Filters.OUTLINE))
+    asyncio.run(Convolution.run("balloons.ascii.pgm", "b.pgm", Filters.SHARPEN))
+    # fire.Fire(CLI)
