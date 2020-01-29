@@ -52,10 +52,13 @@ class PyPBM:
                 self.max_value = 1
 
             # Pixels array
-            self.pixels = np.zeros((self.height, self.width), int)
+            if self.type != 'P3':
+                self.pixels = np.zeros((self.height, self.width), dtype=int)
+            else:
+                self.pixels = np.zeros((self.height, self.width), dtype=(int, 3))
 
             for i in range(self.height):
-                row = np.empty(self.width)
+                row = self.pixels[i]
                 for j in range(self.width):
                     if self.type != 'P3':
                         token = self.get_next_token(tokens)
@@ -76,19 +79,22 @@ class PyPBM:
                         if token.type != self.NUMBER:
                             raise ValueError("wrong pixel format at ", token.start)
                         b = int(token.string)
-                        row[j] = self.rgb_to_int(r, g, b, self.max_value)
+                        row[j] = (r, g, b)
                 self.pixels[i] = row
         f.close()
 
     def __repr__(self):
         res = f"Image: {self.file_name} id:{self.id}"
         res += f"Format: {self.type}\nSize: {self.width} x {self.height}\n"
-        res += f"Max value: {self.max_value}\n" if self.type == 'P2' or self.type == 'P3' else ""
+        res += f"Max value: {self.max_value}\n" if self.type != 'P1' else ""
         res += f"{self.pixels}"
         return res
 
+    def update_max_value(self):
+        self.max_value = np.amax(self.pixels)
+
     def info(self):
-        return f"Image: {self.file_name} id:{self.id}"
+        return f"Image: {self.file_name} id: {self.id}"
 
     def save(self, new_file):
         with open(new_file, 'w') as f:
@@ -100,17 +106,13 @@ class PyPBM:
             for h in range(self.height):
                 row = ""
                 for w in range(self.width):
-                    row += str(self.pixels[h][w]) + " "
+                    if self.type != 'P3':
+                        row += str(self.pixels[h][w]) + " "
+                    else:
+                        for color in self.pixels[h][w]:
+                            row += str(color) + " "
+                        # row += " "
                 f.write(row+"\n")
-
-    def update_max_value(self):
-        self.max_value = np.amax(self.pixels)
-
-    def cut_edges(self):
-        self.pixels = self.pixels[1:-1][1:-1]
-        self.width -= 1
-        self.height -= 1
-        self.update_max_value()
 
     @staticmethod
     def get_next_token(gen):
@@ -124,24 +126,8 @@ class PyPBM:
     def scale_number(number, current_max):
         return int(number / current_max) * 255
 
-    @staticmethod
-    def rgb_to_int(r, g, b, current_max):
-        rgb = PyPBM.scale_number(r, current_max)
-        rgb = (rgb << 8) + PyPBM.scale_number(g, current_max)
-        rgb = (rgb << 8) + PyPBM.scale_number(b, current_max)
-        return rgb
-
-    @staticmethod
-    def int_to_rgb(rgb, prev_max):
-        red = (rgb >> 16) & 0xFF
-        green = (rgb >> 8) & 0xFF
-        blue = rgb & 0xFF
-        return PyPBM.scale_number(red, prev_max), PyPBM.scale_number(green, prev_max), PyPBM.scale_number(blue, prev_max)
-
 
 if __name__ == "__main__":
-    p = PyPBM('balloons.ascii.pgm', 0)
-    # print(p)
-    print(np.amax(p.pixels))
-    # p.save("p1_save.txt")
+    p = PyPBM('pbmlib.ascii.ppm', 0)
+    p.save("output/p.ppm")
 
