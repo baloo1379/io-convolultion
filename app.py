@@ -11,7 +11,7 @@ class Filters:
     ONES = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     BLUR = np.array([[0.0625, 0.125, 0.0625], [0.125, 0.25, 0.125], [0.0625, 0.125, 0.0625]])
     SHARPEN = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    OUTLINE = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+    OUTLINE = np.array([[-.25, -.5, -.25], [-.5, 3, -.5], [-.25, -.5, -.25]])
     EMBOSS = np.array([[-2, -1, 0], [-1, 1, 1], [0, 1, 2]])
     DARKER = np.array([[0, 0, 0], [0, 0.5, 0], [0, 0, 0]])
 
@@ -41,7 +41,7 @@ class Convolution:
         await asyncio.sleep(random.randint(1, 7) / 10)
         image = PyPBM(file, n)
         target = copy.deepcopy(image)
-        target.max_value = 1
+        target.max_value = 255
         print("Image ready: ", image.info())
         await q.put(image)
         return target
@@ -222,9 +222,10 @@ class Convolution:
             target, coords, value = await pixels_o.get()
             # print(idx, coords, value)
             async with lock:
-                final_image.pixels[coords] = value
+                value = value if value >= 0 else 0
                 if value > final_image.max_value:
-                    final_image.max_value = value
+                    value = final_image.max_value
+                final_image.pixels[coords] = value
             pixels_o.task_done()
 
     @staticmethod
@@ -248,11 +249,11 @@ class Convolution:
 
         corners_task = asyncio.create_task(Convolution.produce_corners(corners_j, corners_o))
         sides_task = asyncio.create_task(Convolution.produce_sides(sides_j, sides_o))
-        rows_task = [asyncio.create_task(Convolution.produce_rows(rows_j, rows_o)) for i in range(2)]
+        rows_task = [asyncio.create_task(Convolution.produce_rows(rows_j, rows_o)) for i in range(8)]
 
         calculation_c = asyncio.create_task(Convolution.calculate_corner(corners_o, pixels_j, f))
         calculation_s = asyncio.create_task(Convolution.calculate_side(sides_o, pixels_j, f))
-        calculation_r = [asyncio.create_task(Convolution.calculate_row(rows_o, pixels_j, i, f)) for i in range(2)]
+        calculation_r = [asyncio.create_task(Convolution.calculate_row(rows_o, pixels_j, i, f)) for i in range(8)]
 
         final_image = await load
 
@@ -271,10 +272,10 @@ class Convolution:
 
         end_image = time_list[1] - time_list[0]
         end_calc = time.perf_counter() - time_list[1]
-        final_image.cut_edges()
+        # final_image.cut_edges()
+        final_image.update_max_value()
         print(f"image {final_image.id} loaded in {end_image:0.2f} seconds.")
         print(f"result {final_image.id} took {end_calc:0.2f} seconds.")
-
         final_image.save(o)
 
 
@@ -283,5 +284,5 @@ if __name__ == "__main__":
     # a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     # b = np.array([[0, 0, 0], [0, 0.5, 0], [0, 0, 0]])
     # print(Convolution.calc(a, Filters.OUTLINE))
-    asyncio.run(Convolution.run("balloons.ascii.pgm", "b.pgm", Filters.SHARPEN))
+    asyncio.run(Convolution.run("balloons.ascii.pgm", "b.pgm", Filters.OUTLINE))
     # fire.Fire(CLI)
